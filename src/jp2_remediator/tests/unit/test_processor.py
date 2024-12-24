@@ -74,9 +74,11 @@ class TestProcessor:
 
         # 2. Verify logger calls
         all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
-        assert any("Downloading file: test-folder/file.jp2 from bucket: test-bucket" in msg for msg in all_logger_msgs), \
+        assert any("Downloading file: test-folder/file.jp2 from bucket: test-bucket"
+                   in msg for msg in all_logger_msgs), \
             "Expected 'Downloading file:' log not found."
-        assert any("Uploading modified file to bucket: output-bucket, key: output-folder/file_modified.jp2" in msg for msg in all_logger_msgs), \
+        assert any("Uploading modified file to bucket: output-bucket, key: output-folder/file_modified.jp2"
+                   in msg for msg in all_logger_msgs), \
             "Expected 'Uploading modified file:' log not found."
 
     @patch("jp2_remediator.processor.os.path.exists", return_value=False)
