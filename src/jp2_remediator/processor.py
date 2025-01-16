@@ -24,9 +24,7 @@ class Processor:
             for file in files:
                 if file.lower().endswith(".jp2"):
                     file_path = os.path.join(root, file)
-                    self.logger.info(f"Processing file: {file_path}")
-                    reader = self.box_reader_factory.get_reader(file_path)
-                    reader.read_jp2_file()
+                    self.process_file(file_path)
 
     def process_s3_file(self, input_bucket, input_key, output_bucket, output_key=None):
         """Process a specific JP2 file from S3 and upload to a specified S3 location."""
@@ -48,12 +46,26 @@ class Processor:
         reader = self.box_reader_factory.get_reader(download_path)
         reader.read_jp2_file()
 
-        # Generate the modified file path
+        if hasattr(reader, "skip_remediation") and reader.skip_remediation:
+            self.logger.info(
+                f"Skipping upload for {download_path} because curv_trc_gamma_n != 1 for at least one TRC channel."
+            )
+            return
+
+        # Generate the modified file path, use timestamp if output_key is not provided
         timestamp = datetime.datetime.now().strftime("%Y%m%d")
         modified_file_path = download_path.replace(".jp2", f"_modified_{timestamp}.jp2")
 
         if os.path.exists(modified_file_path):
             self.logger.info(f"Uploading modified file to bucket: {output_bucket}, key: {output_key}")
             s3.upload_file(modified_file_path, output_bucket, output_key)
+
+            # Delete the temporary file after successful upload
+            try:
+                os.remove(modified_file_path)
+                self.logger.info(f"Deleted temporary file: {modified_file_path}")
+            except OSError as e:
+                self.logger.error(f"Error deleting file {modified_file_path}: {e}")
+        # In case the modified file was not created, log a message for debugging
         else:
-            self.logger.info(f"File {modified_file_path} does not exist, skipping upload.")
+            self.logger.info(f"File {modified_file_path} not created.")

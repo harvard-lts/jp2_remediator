@@ -40,7 +40,7 @@ class TestProcessor:
     @patch("jp2_remediator.processor.os.path.exists", return_value=True)
     @patch("jp2_remediator.processor.boto3.client", autospec=True)
     def test_process_s3_file_with_output_key(
-        self, mock_boto3_client, mock_os_path_exists, processor
+        self, mock_boto3_client, mock_os_path_exists, processor, mock_box_reader_factory
     ):
         """
         When the modified file DOES exist, we expect:
@@ -60,7 +60,15 @@ class TestProcessor:
         mock_s3_client.download_file.return_value = None
         mock_s3_client.upload_file.return_value = None
 
+        # # Force skip_remediation to remain False so upload is not skipped
+        mock_reader = MagicMock()
+        mock_reader.skip_remediation = False
+        mock_box_reader_factory.get_reader.return_value = mock_reader
+
         processor.process_s3_file(input_bucket, input_key, output_bucket, output_key=output_key)
+        print("kim here")
+        print("upload_file call_args_list:", mock_s3_client.upload_file.call_args_list)
+        print(mock_reader.skip_remediation)
 
         # 1. Check upload_file with a wildcard in local path
         upload_calls = [
@@ -84,7 +92,7 @@ class TestProcessor:
     @patch("jp2_remediator.processor.os.path.exists", return_value=False)
     @patch("jp2_remediator.processor.boto3.client", autospec=True)
     def test_process_s3_file_file_does_not_exist(
-        self, mock_boto3_client, mock_os_path_exists, processor
+        self, mock_boto3_client, mock_os_path_exists, processor, mock_box_reader_factory
     ):
         """
         When the modified file does NOT exist, we expect:
@@ -101,10 +109,14 @@ class TestProcessor:
 
         mock_s3_client.download_file.return_value = None
 
+        mock_reader = MagicMock()
+        mock_reader.skip_remediation = False
+        mock_box_reader_factory.get_reader.return_value = mock_reader
+
         processor.process_s3_file(input_bucket, input_key, output_bucket, output_key=output_key)
 
         mock_s3_client.upload_file.assert_not_called()
 
         all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
-        assert any("does not exist, skipping upload" in msg for msg in all_logger_msgs), \
-            "Expected 'skipping upload' log message not found."
+        assert any("not created" in msg for msg in all_logger_msgs), \
+            "Expected 'not created' log message not found."
