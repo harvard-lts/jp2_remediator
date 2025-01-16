@@ -50,7 +50,7 @@ def main():
         "--output-bucket", help="Name of the AWS S3 bucket to upload the modified file (optional)", required=True
     )
     s3_file_parser.add_argument(
-        "--output-key", help="Full key (path) for the uploaded file (overrides output-prefix)"
+        "--output-key", help="Full key (path) for the uploaded file"
     )
     s3_file_parser.set_defaults(
         func=lambda args: processor.process_s3_file(

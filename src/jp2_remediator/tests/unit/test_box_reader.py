@@ -382,35 +382,52 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             curv_trc_field_length}). Modifying the size..."""
         self.reader.logger.warning.assert_any_call(expected_warning)
 
-        # Test for process_trc_tag: when curv_trc_gamma_n != 1, in this case is 2
-        def test_process_trc_tag_sets_skip_remediation(self):
-            """
-            Ensure that if curv_trc_gamma_n != 1, skip_remediation is set to True.
-            """
-            # Prepare minimal file_contents with a single TRC tag
-            self.reader.file_contents = bytearray(
-                b"\x00" * 50 +
-                b"\x72\x54\x52\x43" +        # 'rTRC'
-                b"\x00\x00\x00\x64" +        # Some offset (100) in big-endian
-                b"\x00\x00\x00\x20" +        # Tag size (32) in big-endian
-                b"\x00" * 200                # Just extra space
-            )
+    # Test for process_trc_tag: when curv_trc_gamma_n != 1, in this case is 2
+    def test_process_trc_tag_sets_skip_remediation(self):
+        """
+        Ensure that if curv_trc_gamma_n != 1, skip_remediation is set to True.
+        """
+        # Prepare minimal file_contents with a single TRC tag
+        self.reader.file_contents = bytearray(
+            b"\x00" * 50 +
+            b"\x72\x54\x52\x43" +        # 'rTRC'
+            b"\x00\x00\x00\x64" +        # Some offset (100) in big-endian
+            b"\x00\x00\x00\x20" +        # Tag size (32) in big-endian
+            b"\x00" * 200                # Just extra space
+        )
 
-            # Force a header_offset_position that points to 'curv' data
-            header_offset_position = 50
+        # Force a header_offset_position that points to 'curv' data
+        header_offset_position = 50
 
-            # Insert a 'curv' signature + reserved + gamma_n != 1 at position (100 + header_offset_position)
-            curv_trc_position = 100 + header_offset_position
-            curv_data = b"curv" + (0).to_bytes(4, 'big') + (2).to_bytes(4, 'big')  # gamma_n = 2
-            self.reader.file_contents[curv_trc_position:curv_trc_position + 12] = curv_data
+        # Insert a 'curv' signature + reserved + gamma_n != 1 at position (100 + header_offset_position)
+        curv_trc_position = 100 + header_offset_position
+        curv_data = b"curv" + (0).to_bytes(4, 'big') + (2).to_bytes(4, 'big')  # gamma_n = 2
+        self.reader.file_contents[curv_trc_position:curv_trc_position + 12] = curv_data
 
-            new_contents = bytearray(self.reader.file_contents)
+        new_contents = bytearray(self.reader.file_contents)
 
-            # Call the method
-            self.reader.process_trc_tag(b"\x72\x54\x52\x43", "rTRC", new_contents, header_offset_position)
+        # Call the method
+        self.reader.process_trc_tag(b"\x72\x54\x52\x43", "rTRC", new_contents, header_offset_position)
 
-            # Assert skip_remediation is now True
-            self.assertTrue(self.reader.skip_remediation, "Expected skip_remediation to be True when gamma_n != 1.")
+        # Assert skip_remediation is now True
+        self.assertTrue(self.reader.skip_remediation, "Expected skip_remediation to be True when gamma_n != 1.")
+
+    def test_read_jp2_file_skip_remediation(self):
+        """
+        Ensure coverage for lines that handle skip_remediation in read_jp2_file().
+        """
+        self.reader.file_contents = b"SomeJP2Content"
+        self.reader.skip_remediation = True  # Force skipping
+        
+        with patch.object(self.reader, 'write_modified_file') as mock_write:
+            self.reader.read_jp2_file()
+            # Because skip_remediation is True, we do not call write_modified_file
+            mock_write.assert_not_called()
+
+        # Check the log was called with that specific skip message
+        self.reader.logger.info.assert_any_call(
+            "Skipping 'write_modified_file' because gamma_n != 1 for at least one TRC channel."
+        )
 
 
 if __name__ == "__main__":
