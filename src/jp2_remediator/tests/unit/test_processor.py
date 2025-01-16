@@ -135,11 +135,11 @@ class TestProcessor:
         input_bucket = "test-bucket"
         input_key = "test-folder/no_output_key.jp2"
         output_bucket = "output-bucket"
-        
+
         # Simulate everything existing
         mock_s3_client.download_file.return_value = None
         mock_s3_client.upload_file.return_value = None
-        
+
         # Provide a BoxReader whose skip_remediation remains False
         mock_reader = MagicMock()
         mock_reader.skip_remediation = False
@@ -147,13 +147,13 @@ class TestProcessor:
 
         # Call process_s3_file WITHOUT passing output_key
         processor.process_s3_file(input_bucket, input_key, output_bucket)
-        
+
         # Now check that the method generated an output_key internally AND uploaded
         mock_s3_client.upload_file.assert_called_once()
-        
+
         # Also check that we see the upload log
         all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
-        assert any("Uploading modified file to bucket: output-bucket, key:" in msg 
+        assert any("Uploading modified file to bucket: output-bucket, key:" in msg
                    for msg in all_logger_msgs), "Expected log about uploading file."
 
     @patch("jp2_remediator.processor.boto3.client", autospec=True)

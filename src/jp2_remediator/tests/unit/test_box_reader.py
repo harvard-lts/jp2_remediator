@@ -418,7 +418,7 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
         """
         self.reader.file_contents = b"SomeJP2Content"
         self.reader.skip_remediation = True  # Force skipping
-        
+
         with patch.object(self.reader, 'write_modified_file') as mock_write:
             self.reader.read_jp2_file()
             # Because skip_remediation is True, we do not call write_modified_file
