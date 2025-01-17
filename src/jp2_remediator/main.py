@@ -36,19 +36,26 @@ def main():
         func=lambda args: processor.process_directory(args.directory)
     )
 
-    # Subparser for processing all JP2 files in an S3 bucket
-    bucket_parser = subparsers.add_parser(
-        "bucket", help="Process all JP2 files in an S3 bucket"
+    # Subparser for processing a single JP2 file in S3
+    s3_file_parser = subparsers.add_parser(
+        "s3-file", help="Process a single JP2 file in S3"
     )
-    bucket_parser.add_argument(
-        "bucket", help="Name of the AWS S3 bucket to process JP2 files from"
+    s3_file_parser.add_argument(
+        "--input-bucket", help="Name of the AWS S3 bucket containing the JP2 file", required=True
     )
-    bucket_parser.add_argument(
-        "--prefix", help="Prefix of files in the AWS S3 bucket (optional)",
-        default=""
+    s3_file_parser.add_argument(
+        "--input-key", help="Key (path) of the JP2 file in the S3 bucket", required=True
     )
-    bucket_parser.set_defaults(
-        func=lambda args: processor.process_s3_bucket(args.bucket, args.prefix)
+    s3_file_parser.add_argument(
+        "--output-bucket", help="Name of the AWS S3 bucket to upload the modified file (optional)", required=True
+    )
+    s3_file_parser.add_argument(
+        "--output-key", help="Full key (path) for the uploaded file"
+    )
+    s3_file_parser.set_defaults(
+        func=lambda args: processor.process_s3_file(
+            args.input_bucket, args.input_key, args.output_bucket, args.output_key
+        )
     )
 
     args = parser.parse_args()

@@ -1,6 +1,5 @@
-import unittest
 import pytest
-from unittest.mock import call, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from jp2_remediator.processor import Processor
 
 
@@ -11,115 +10,218 @@ class TestProcessor:
         return MagicMock()
 
     @pytest.fixture
-    def processor(self, mock_box_reader_factory):
+    @patch("jp2_remediator.processor.configure_logger")
+    def processor(self, mock_configure_logger, mock_box_reader_factory):
+        mock_logger = MagicMock()
+        mock_configure_logger.return_value = mock_logger
         return Processor(mock_box_reader_factory)
 
-    # Test for process_file function
-    @patch("builtins.print")
-    def test_process_file(self, mock_print, processor, mock_box_reader_factory):
-        # Define the file path
+    def test_process_file(self, processor, mock_box_reader_factory):
         file_path = "test_file.jp2"
 
-        # Call process_file with the test file path
+        # Run the processor method
         processor.process_file(file_path)
 
-        # Check that the file was processed
-        mock_print.assert_called_once_with(f"Processing file: {file_path}")
-
-        # Ensure the BoxReader instance had its read_jp2_file method called
+        # Test that logger.info was called once with the correct message
+        processor.logger.info.assert_called_once_with(f"Processing file: {file_path}")
         mock_box_reader_factory.get_reader.assert_called_once_with(file_path)
         mock_box_reader_factory.get_reader.return_value.read_jp2_file.assert_called_once()
 
-    # Test for process_directory function
     @patch("os.walk", return_value=[("root", [], ["file1.jp2", "file2.jp2"])])
-    @patch("builtins.print")
-    def test_process_directory_with_multiple_files(
-        self, mock_print, mock_os_walk, processor, mock_box_reader_factory
-    ):
-        # Call process_directory with a dummy path
+    def test_process_directory_with_multiple_files(self, mock_os_walk, processor, mock_box_reader_factory):
         processor.process_directory("dummy_path")
 
-        # Check that each JP2 file in the directory was processed
-        mock_print.assert_any_call("Processing file: root/file1.jp2")
-        mock_print.assert_any_call("Processing file: root/file2.jp2")
-
-        # Ensure each BoxReader instance had its read_jp2_file method called
+        # Test that logger.info was called for each file
+        processor.logger.info.assert_any_call("Processing file: root/file1.jp2")
+        processor.logger.info.assert_any_call("Processing file: root/file2.jp2")
         assert mock_box_reader_factory.get_reader.call_count == 2
-
-        # Ensure each BoxReader instance was created with the correct file path
-        assert mock_box_reader_factory.get_reader.call_args_list == [
-            call("root/file1.jp2"),
-            call("root/file2.jp2"),
-        ]
         assert mock_box_reader_factory.get_reader.return_value.read_jp2_file.call_count == 2
 
-    # Test for process_s3_bucket function
-    @patch("jp2_remediator.processor.boto3.client")
-    @patch("builtins.print")
-    def test_process_s3_bucket(self, mock_print, mock_boto3_client, processor, mock_box_reader_factory):
-        # Set up the mock S3 client
+    @patch("jp2_remediator.processor.os.path.exists", return_value=True)
+    @patch("jp2_remediator.processor.boto3.client", autospec=True)
+    def test_process_s3_file_with_output_key(
+        self, mock_boto3_client, mock_os_path_exists, processor, mock_box_reader_factory
+    ):
+        """
+        When the modified file DOES exist, we expect:
+        1) The logger to show 'Downloading file:' and 'Uploading modified file:'
+        2) The local file path to contain a wildcard segment (file_modified_).
+        3) The upload_file call to use the correct output_bucket/output_key.
+        """
         mock_s3_client = MagicMock()
         mock_boto3_client.return_value = mock_s3_client
 
-        # Define the bucket name and prefix
-        bucket_name = "test-bucket"
-        prefix = "test-prefix"
+        input_bucket = "test-bucket"
+        input_key = "test-folder/file.jp2"
+        output_bucket = "output-bucket"
+        output_key = "output-folder/file_modified.jp2"
 
-        # Prepare a fake response for list_objects_v2
-        mock_s3_client.list_objects_v2.return_value = {
-            "Contents": [
-                {"Key": "file1.jp2"},
-                {"Key": "file2.jp2"},
-                {"Key": "file3.txt"},  # Non-JP2 file to test filtering
-            ]
-        }
-
-        # Mock download_file and upload_file methods
+        # Simulate successful S3 calls
         mock_s3_client.download_file.return_value = None
         mock_s3_client.upload_file.return_value = None
 
-        # Call the method under test
-        processor.process_s3_bucket(bucket_name, prefix)
+        # # Force skip_remediation to remain False so upload is not skipped
+        mock_reader = MagicMock()
+        mock_reader.skip_remediation = False
+        mock_box_reader_factory.get_reader.return_value = mock_reader
 
-        # Verify that list_objects_v2 was called with the correct parameters
-        mock_s3_client.list_objects_v2.assert_called_once_with(Bucket=bucket_name, Prefix=prefix)
+        processor.process_s3_file(input_bucket, input_key, output_bucket, output_key=output_key)
+        print("kim here")
+        print("upload_file call_args_list:", mock_s3_client.upload_file.call_args_list)
+        print(mock_reader.skip_remediation)
 
-        # Verify that download_file was called for each .jp2 file
-        expected_download_calls = [
-            unittest.mock.call(bucket_name, "file1.jp2", "/tmp/file1.jp2"),
-            unittest.mock.call(bucket_name, "file2.jp2", "/tmp/file2.jp2"),
+        # 1. Check upload_file with a wildcard in local path
+        upload_calls = [
+            call
+            for call in mock_s3_client.upload_file.call_args_list
+            if "/tmp/file_modified_" in call.args[0]       # local path wildcard
+            and call.args[1] == output_bucket
+            and call.args[2] == output_key
         ]
-        assert mock_s3_client.download_file.call_args_list == expected_download_calls
+        assert len(upload_calls) == 1, "Expected exactly one upload call with wildcard local path."
 
-        # Verify that BoxReader was instantiated with the correct download paths
-        expected_boxreader_calls = [
-            unittest.mock.call("/tmp/file1.jp2"),
-            unittest.mock.call("/tmp/file2.jp2"),
-        ]
-        assert mock_box_reader_factory.get_reader.call_args_list == expected_boxreader_calls
+        # 2. Verify logger calls
+        all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
+        assert any("Downloading file: test-folder/file.jp2 from bucket: test-bucket"
+                   in msg for msg in all_logger_msgs), \
+            "Expected 'Downloading file:' log not found."
+        assert any("Uploading modified file to bucket: output-bucket, key: output-folder/file_modified.jp2"
+                   in msg for msg in all_logger_msgs), \
+            "Expected 'Uploading modified file:' log not found."
 
-        # Verify that read_jp2_file was called for each .jp2 file
-        assert mock_box_reader_factory.get_reader.return_value.read_jp2_file.call_count == 2
+    @patch("jp2_remediator.processor.os.path.exists", return_value=False)
+    @patch("jp2_remediator.processor.boto3.client", autospec=True)
+    def test_process_s3_file_file_does_not_exist(
+        self, mock_boto3_client, mock_os_path_exists, processor, mock_box_reader_factory
+    ):
+        """
+        When the modified file does NOT exist, we expect:
+        1) No upload to S3 (upload_file not called).
+        2) A log message stating the file does not exist, skipping upload.
+        """
+        mock_s3_client = MagicMock()
+        mock_boto3_client.return_value = mock_s3_client
 
-        # Verify that upload_file was called for each .jp2 file
-        upload_calls = mock_s3_client.upload_file.call_args_list
-        assert len(upload_calls) == 2
-        for c in upload_calls:
-            args, _ = c
-            local_file_path = args[0]
-            upload_bucket = args[1]
-            upload_key = args[2]
-            # Check that the local file path includes '_modified_' and ends with '.jp2'
-            assert "_modified_" in local_file_path, "'_modified_' should be in local_file_path"
-            assert local_file_path.endswith(".jp2")
-            # Check that the upload is to the correct bucket and key
-            assert upload_bucket == bucket_name
-            assert "_modified_" in upload_key
-            assert upload_key.endswith(".jp2")
+        input_bucket = "test-bucket"
+        input_key = "test-folder/file.jp2"
+        output_bucket = "output-bucket"
+        output_key = "output-folder/file_modified.jp2"
 
-        # Verify that print was called correctly
-        expected_print_calls = [
-            unittest.mock.call(f"Processing file: file1.jp2 from bucket {bucket_name}"),
-            unittest.mock.call(f"Processing file: file2.jp2 from bucket {bucket_name}"),
-        ]
-        mock_print.assert_has_calls(expected_print_calls, any_order=True)
+        mock_s3_client.download_file.return_value = None
+
+        mock_reader = MagicMock()
+        mock_reader.skip_remediation = False  # Mock that skip_remediation is False, not testing this here
+        mock_box_reader_factory.get_reader.return_value = mock_reader
+
+        processor.process_s3_file(input_bucket, input_key, output_bucket, output_key=output_key)
+
+        mock_s3_client.upload_file.assert_not_called()
+
+        all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
+        assert any("not created" in msg for msg in all_logger_msgs), \
+            "Expected 'not created' log message not found."
+
+    @patch("jp2_remediator.processor.os.path.exists", return_value=True)
+    @patch("jp2_remediator.processor.boto3.client", autospec=True)
+    def test_process_s3_file_no_output_key(
+        self, mock_boto3_client, mock_os_path_exists, processor, mock_box_reader_factory
+    ):
+        """
+        Test coverage for the branch where output_key is NOT provided.
+        """
+        mock_s3_client = MagicMock()
+        mock_boto3_client.return_value = mock_s3_client
+
+        input_bucket = "test-bucket"
+        input_key = "test-folder/no_output_key.jp2"
+        output_bucket = "output-bucket"
+
+        # Simulate everything existing
+        mock_s3_client.download_file.return_value = None
+        mock_s3_client.upload_file.return_value = None
+
+        # Provide a BoxReader whose skip_remediation remains False
+        mock_reader = MagicMock()
+        mock_reader.skip_remediation = False
+        mock_box_reader_factory.get_reader.return_value = mock_reader
+
+        # Call process_s3_file WITHOUT passing output_key
+        processor.process_s3_file(input_bucket, input_key, output_bucket)
+
+        # Now check that the method generated an output_key internally AND uploaded
+        mock_s3_client.upload_file.assert_called_once()
+
+        # Also check that we see the upload log
+        all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
+        assert any("Uploading modified file to bucket: output-bucket, key:" in msg
+                   for msg in all_logger_msgs), "Expected log about uploading file."
+
+    @patch("jp2_remediator.processor.boto3.client", autospec=True)
+    def test_process_s3_file_skip_remediation(
+        self, mock_boto3_client, processor, mock_box_reader_factory
+    ):
+        """
+        Covers lines where skip_remediation is True -> log + return (no upload).
+        """
+        mock_s3_client = MagicMock()
+        mock_boto3_client.return_value = mock_s3_client
+
+        input_bucket = "test-bucket"
+        input_key = "test-folder/skip_rem.jp2"
+        output_bucket = "output-bucket"
+
+        # Ensure the downloaded file "exists", so we skip for skip_remediation, not missing file
+        with patch("jp2_remediator.processor.os.path.exists", return_value=True):
+            mock_s3_client.download_file.return_value = None
+
+            # This time skip_remediation is True
+            mock_reader = MagicMock()
+            mock_reader.skip_remediation = True
+            mock_box_reader_factory.get_reader.return_value = mock_reader
+
+            processor.process_s3_file(input_bucket, input_key, output_bucket, output_key="some-output-file.jp2")
+
+        # Because skip_remediation is True, we never call upload_file
+        mock_s3_client.upload_file.assert_not_called()
+
+        # Also confirm we logged the skip message
+        all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
+        assert any("Skipping upload for /tmp/skip_rem.jp2 because curv_trc_gamma_n" in msg
+                   for msg in all_logger_msgs), "Expected skip_remediation log message."
+
+    @patch("jp2_remediator.processor.os.path.exists", return_value=True)
+    @patch("jp2_remediator.processor.os.remove", autospec=True)
+    @patch("jp2_remediator.processor.boto3.client", autospec=True)
+    def test_process_s3_file_file_removed_successfully(
+        self, mock_boto3_client, mock_remove, mock_os_path_exists, processor, mock_box_reader_factory
+    ):
+        """
+        Covers the line where 'Deleted temporary file:' is logged after a successful os.remove().
+        """
+        mock_s3_client = MagicMock()
+        mock_boto3_client.return_value = mock_s3_client
+
+        input_bucket = "test-bucket"
+        input_key = "test-folder/file.jp2"
+        output_bucket = "output-bucket"
+        output_key = "output-folder/file_modified.jp2"
+
+        # Simulate successful S3 calls
+        mock_s3_client.download_file.return_value = None
+        mock_s3_client.upload_file.return_value = None
+
+        # Ensure skip_remediation is False so we don't exit early
+        mock_reader = MagicMock()
+        mock_reader.skip_remediation = False
+        mock_box_reader_factory.get_reader.return_value = mock_reader
+
+        # Run the method
+        processor.process_s3_file(input_bucket, input_key, output_bucket, output_key=output_key)
+
+        # Confirm remove was called
+        mock_remove.assert_called_once()
+
+        # Confirm we logged the 'Deleted temporary file:' message
+        all_logger_msgs = [call.args[0] for call in processor.logger.info.mock_calls]
+        assert any("Deleted temporary file:" in msg for msg in all_logger_msgs), \
+            "Expected 'Deleted temporary file:' log message not found."

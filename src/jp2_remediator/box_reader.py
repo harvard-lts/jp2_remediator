@@ -9,6 +9,7 @@ class BoxReader:
         self.file_path = file_path
         self.file_contents = self.read_file(file_path)
         self.validator = None
+        self.skip_remediation = False
         self.logger = configure_logger(__name__)
 
     def read_file(self, file_path):
@@ -122,7 +123,7 @@ class BoxReader:
 
         curv_signature = curv_profile[0:4].decode("utf-8")  # ICC.1:2022 Table 35 tag signature
         curv_reserved = int.from_bytes(curv_profile[4:8], byteorder="big")  # ICC.1:2022 Table 35 reserved 0's
-        curv_trc_gamma_n = int.from_bytes(curv_profile[8:12], byteorder="big")  # # ICC.1:2022 Table 35 n value
+        curv_trc_gamma_n = int.from_bytes(curv_profile[8:12], byteorder="big")  # ICC.1:2022 Table 35 n value
 
         self.logger.debug(f"'curv' Profile Signature for {trc_name}: {curv_signature}")
         self.logger.debug(f"'curv' Reserved Value: {curv_reserved}")
@@ -130,11 +131,12 @@ class BoxReader:
         curv_trc_field_length = curv_trc_gamma_n * 2 + 12  # ICC.1:2022 Table 35 2n field length
         self.logger.debug(f"'curv_{trc_name}_field_length': {curv_trc_field_length}")
 
-        # Check if the curv_trc_gamma_n is not 1, if not then skip processing of file
+        # If 'curv_trc_gamma_n' is not 1, set skip_remediation = True and skip further remediation.
         if curv_trc_gamma_n != 1:
             self.logger.warning(f"""Warning: In file '{self.file_path}', 'curv_{trc_name}_gamma_n' value is {
                 curv_trc_gamma_n
-                }, expected 1. Modification may be required.""")
+                }, expected 1. Remediation will be skipped for this file.""")
+            self.skip_remediation = True
             return new_contents
 
         if trc_tag_size != curv_trc_field_length:
@@ -170,7 +172,7 @@ class BoxReader:
             self.logger.info(f"No modifications needed. No new file created: {self.file_path}")
 
     def read_jp2_file(self):
-        # Main function to read, validate, and modify JP2 files.
+        # Main function to read, validate, and check to remediate JP2 files.
         if not self.file_contents:
             return
 
@@ -180,5 +182,12 @@ class BoxReader:
 
         header_offset_position = self.check_boxes()
         new_file_contents = self.process_all_trc_tags(header_offset_position)
+
+        # If any TRC had a curv_trc_gamma_n != 1, skip writing the modified file.
+        if self.skip_remediation:
+            self.logger.info(
+                "Skipping 'write_modified_file' because gamma_n != 1 for at least one TRC channel."
+            )
+            return
 
         self.write_modified_file(new_file_contents)
