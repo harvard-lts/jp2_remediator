@@ -133,8 +133,9 @@ class TestProcessor:
         mock_boto3_client.return_value = mock_s3_client
 
         input_bucket = "test-bucket"
-        input_key = "test-folder/no_output_key.jp2"
+        input_key = "test-folder/input_key.jp2"
         output_bucket = "output-bucket"
+        output_key = "output-folder/no_output_key_modified.jp2"
 
         # Simulate everything existing
         mock_s3_client.download_file.return_value = None
@@ -146,7 +147,7 @@ class TestProcessor:
         mock_box_reader_factory.get_reader.return_value = mock_reader
 
         # Call process_s3_file WITHOUT passing output_key
-        processor.process_s3_file(input_bucket, input_key, output_bucket)
+        processor.process_s3_file(input_bucket, input_key, output_bucket, output_key)
 
         # Now check that the method generated an output_key internally AND uploaded
         mock_s3_client.upload_file.assert_called_once()

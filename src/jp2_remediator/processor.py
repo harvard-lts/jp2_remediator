@@ -26,16 +26,9 @@ class Processor:
                     file_path = os.path.join(root, file)
                     self.process_file(file_path)
 
-    def process_s3_file(self, input_bucket, input_key, output_bucket, output_key=None):
+    def process_s3_file(self, input_bucket, input_key, output_bucket, output_key):
         """Process a specific JP2 file from S3 and upload to a specified S3 location."""
         s3 = boto3.client("s3")
-
-        # Generate the output key dynamically if not explicitly provided
-        if not output_key:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d")
-            output_key = os.path.join(
-                os.path.basename(input_key).replace(".jp2", f"_modified_file_{timestamp}.jp2")
-            )
 
         # Download the file from S3
         download_path = f"/tmp/{os.path.basename(input_key)}"
