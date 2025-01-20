@@ -275,6 +275,7 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             patch.object(self.reader, 'validator') as mock_validator, \
             patch.object(self.reader, 'check_boxes') as mock_check_boxes, \
             patch.object(self.reader, 'process_all_trc_tags') as mock_process_all_trc_tags, \
+            patch.object(self.reader, '_skip_remediation') as mock_skip_remediation, \
                 patch.object(self.reader, 'write_modified_file') as mock_write_modified_file:
 
             # Set up the mock for validator._isValid()
@@ -283,6 +284,7 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             # Set up return values for other methods
             mock_check_boxes.return_value = 100  # Example header_offset_position
             mock_process_all_trc_tags.return_value = b"Modified JP2 content"
+            mock_skip_remediation.return_value = False
 
             # Call the method under test
             self.reader.read_jp2_file()
@@ -293,11 +295,11 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             # Assert that validator._isValid() was called once
             mock_validator._isValid.assert_called_once()
 
-            # Assert that logger.info was called with correct parameters
-            self.reader.logger.info.assert_called_with("Is file valid? True")
-
             # Assert that check_boxes was called once
             mock_check_boxes.assert_called_once()
+
+            # Assert that _skip_remediation was called once
+            mock_skip_remediation.assert_called_once()
 
             # Assert that process_all_trc_tags was called with the correct header_offset_position
             mock_process_all_trc_tags.assert_called_once_with(100)
@@ -410,24 +412,19 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
         self.reader.process_trc_tag(b"\x72\x54\x52\x43", "rTRC", new_contents, header_offset_position)
 
         # Assert skip_remediation is now True
-        self.assertTrue(self.reader.skip_remediation, "Expected skip_remediation to be True when gamma_n != 1.")
+        self.assertTrue(self.reader._skip_remediation(), "Expected skip_remediation to be True when gamma_n != 1.")
 
     def test_read_jp2_file_skip_remediation(self):
         """
         Ensure coverage for lines that handle skip_remediation in read_jp2_file().
         """
         self.reader.file_contents = b"SomeJP2Content"
-        self.reader.skip_remediation = True  # Force skipping
+        self.reader.curv_trc_gamma_n = 2  # Force skipping
 
         with patch.object(self.reader, 'write_modified_file') as mock_write:
             self.reader.read_jp2_file()
             # Because skip_remediation is True, we do not call write_modified_file
             mock_write.assert_not_called()
-
-        # Check the log was called with that specific skip message
-        self.reader.logger.info.assert_any_call(
-            "Skipping 'write_modified_file' because gamma_n != 1 for at least one TRC channel."
-        )
 
 
 if __name__ == "__main__":

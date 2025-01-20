@@ -61,7 +61,10 @@ def main():
     args = parser.parse_args()
 
     if hasattr(args, "func"):
-        args.func(args)
+        # Returns Jp2Result object
+        result = args.func(args)
+        print(result)
+        return result
     else:
         parser.print_help()
 
