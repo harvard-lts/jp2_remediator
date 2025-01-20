@@ -2,6 +2,8 @@ import datetime
 from jp2_remediator import configure_logger
 from jpylyzer import boxvalidator
 
+from jp2_remediator.jp2_result import Jp2Result
+
 
 class BoxReader:
     def __init__(self, file_path):
@@ -9,7 +11,7 @@ class BoxReader:
         self.file_path = file_path
         self.file_contents = self.read_file(file_path)
         self.validator = None
-        self.skip_remediation = False
+        self.curv_trc_gamma_n = None
         self.logger = configure_logger(__name__)
 
     def read_file(self, file_path):
@@ -132,11 +134,11 @@ class BoxReader:
         self.logger.debug(f"'curv_{trc_name}_field_length': {curv_trc_field_length}")
 
         # If 'curv_trc_gamma_n' is not 1, set skip_remediation = True and skip further remediation.
+        self.curv_trc_gamma_n = curv_trc_gamma_n
         if curv_trc_gamma_n != 1:
             self.logger.warning(f"""Warning: In file '{self.file_path}', 'curv_{trc_name}_gamma_n' value is {
                 curv_trc_gamma_n
                 }, expected 1. Remediation will be skipped for this file.""")
-            self.skip_remediation = True
             return new_contents
 
         if trc_tag_size != curv_trc_field_length:
@@ -162,32 +164,43 @@ class BoxReader:
 
     def write_modified_file(self, new_file_contents):
         # Writes modified file contents to new file if changes were made.
+        # Returns the new file path or None if no changes were made.
         if new_file_contents != self.file_contents:
             timestamp = datetime.datetime.now().strftime("%Y%m%d")  # use "%Y%m%d_%H%M%S" for more precision
             new_file_path = self.file_path.replace(".jp2", f"_modified_{timestamp}.jp2")
             with open(new_file_path, "wb") as new_file:
                 new_file.write(new_file_contents)
             self.logger.info(f"New JP2 file created with modifications: {new_file_path}")
+            return new_file_path
         else:
             self.logger.info(f"No modifications needed. No new file created: {self.file_path}")
+            return None
 
     def read_jp2_file(self):
         # Main function to read, validate, and check to remediate JP2 files.
+        # Returns result object with the modified file_path and remediation status
+        result = Jp2Result(self.file_path)
         if not self.file_contents:
-            return
+            return result.empty_result()
 
         self.initialize_validator()
         is_valid = self.validator._isValid()
         self.logger.info(f"Is file valid? {is_valid}")
+        result.set_validity(is_valid)
 
         header_offset_position = self.check_boxes()
         new_file_contents = self.process_all_trc_tags(header_offset_position)
 
         # If any TRC had a curv_trc_gamma_n != 1, skip writing the modified file.
-        if self.skip_remediation:
-            self.logger.info(
-                "Skipping 'write_modified_file' because gamma_n != 1 for at least one TRC channel."
-            )
-            return
+        result.set_skip_remediation(self.curv_trc_gamma_n)
+        if not self._skip_remediation():
+            modified_path = self.write_modified_file(new_file_contents)
+            result.set_modified_file_path(modified_path)
 
-        self.write_modified_file(new_file_contents)
+        return result
+
+    def _skip_remediation(self):
+        skip = self.curv_trc_gamma_n != 1
+        if skip:
+            self.logger.info("Skip remediation because gamma_n != 1 for at least one TRC channel.")
+        return skip
