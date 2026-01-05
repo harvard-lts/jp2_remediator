@@ -48,13 +48,6 @@ omit = [
   "**/tests/*"
 ]
 
-# Ignore errors in coverage report. These will appear as warnings instead.
-# We're doing this because the coverage report for new files like
-# in_memory_box_reader.py have no prior version to compare to. The coverage
-# error resulting from that breaks the GitHub build/test action.
-[tool.coverage.report]
-ignore_errors = true
-
 [tool.project-paths]
 dir_unit_out = "src/jp2_remediator/tests/out/"
 dir_unit_resources = "src/jp2_remediator/tests/resources/"
