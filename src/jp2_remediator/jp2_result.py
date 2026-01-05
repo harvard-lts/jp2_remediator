@@ -50,15 +50,17 @@ class Jp2Result:
         elif not self.is_valid:
             return 2  # failure, invalid jp2
         elif self.is_skip_remediation():
-            return 3  # failure, skipped remediation, unexpected curv_trc_gamma_n
+            return 3  # failure, skipped remediation, unexpected curv_trc_gamma_n # noqa
         elif self.modified_file_path is None:
             return 0  # neutral, no modifications needed
 
         return 4  # successful remediation
 
     def __repr__(self):
-        return f"Jp2Result(path={self.path}, "\
-            f"is_empty={self.is_empty}, "\
-            f"is_valid={self.is_valid}, "\
-            f"curv_trc_gamma_n={self.curv_trc_gamma_n}, "\
+        return (
+            f"Jp2Result(path={self.path}, "
+            f"is_empty={self.is_empty}, "
+            f"is_valid={self.is_valid}, "
+            f"curv_trc_gamma_n={self.curv_trc_gamma_n}, "
             f"modified_file_path={self.modified_file_path})"
+        )
