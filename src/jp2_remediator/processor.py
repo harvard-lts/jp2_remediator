@@ -27,16 +27,22 @@ class Processor:
                     file_path = os.path.join(root, file)
                     self.process_file(file_path)
 
-    def process_s3_file(self, input_bucket, input_key, output_bucket, output_key):
-        """Process a specific JP2 file from S3 and upload to a specified S3 location.
-           Returns result object with output_key and remediation status.
+    def process_s3_file(
+        self, input_bucket, input_key, output_bucket, output_key
+    ):
+        """
+        Process a specific JP2 file from S3 and upload to a
+        specified S3 location. Returns result object with output_key
+        and remediation status.
         """
         s3 = boto3.client("s3")
 
         # Download the file from S3
         tmp_dir = tempfile.mkdtemp()
         download_path = f"/{tmp_dir}/{os.path.basename(input_key)}"
-        self.logger.info(f"Downloading file: {input_key} from bucket: {input_bucket}")
+        self.logger.info(
+            f"Downloading file: {input_key} from bucket: {input_bucket}"
+        )
         s3.download_file(input_bucket, input_key, download_path)
 
         # Process the file
@@ -49,18 +55,26 @@ class Processor:
 
         modified_file_path = result.get_modified_file_path()
         if os.path.exists(modified_file_path):
-            self.logger.info(f"Uploading modified file to bucket: {output_bucket}, key: {output_key}")
+            self.logger.info(
+                f"Uploading modified file to bucket: {output_bucket}, "
+                f"key: {output_key}"
+            )
             s3.upload_file(modified_file_path, output_bucket, output_key)
 
             # Delete the temporary file after successful upload
             try:
                 os.remove(modified_file_path)
-                self.logger.debug(f"Deleted temporary file: {modified_file_path}")
+                self.logger.debug(
+                    f"Deleted temporary file: {modified_file_path}"
+                )
                 shutil.rmtree(tmp_dir)
                 self.logger.debug(f"Deleted temporary directory: {tmp_dir}")
             except OSError as e:
-                self.logger.error(f"Error deleting file {modified_file_path}: {e}")
-        # In case the modified file was not created, log a message for debugging
+                self.logger.error(
+                    f"Error deleting file {modified_file_path}: {e}"
+                )
+        # In case the modified file was not created,
+        # log a message for debugging
         else:
             self.logger.info(f"File {modified_file_path} not created.")
 
