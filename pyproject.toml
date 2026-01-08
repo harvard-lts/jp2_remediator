@@ -31,7 +31,7 @@ dependencies = [
     "setuptools==73.0.1",
     "six==1.16.0",
     "toml==0.10.2",
-    "urllib3==2.2.3",
+    "urllib3==2.6.3",
 ]
 
 [project.urls]
