@@ -14,10 +14,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Switch to Current Branch
         run: git checkout ${{ env.BRANCH }}
-              
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -28,9 +28,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e .
-      
+
       - name: Run flake8
-        run: | 
+        run: |
           pip install flake8
           flake8 --version
           # stop the build if there are flake8 errors
@@ -49,11 +49,11 @@ jobs:
           python -m coverage report -m --skip-covered --fail-under=85
           python -m coverage xml
           python -m coverage json
-      
+
       # Fetch base branch for comparison (e.g., main)
       - name: Fetch base branch
         run: git fetch origin main
-        
+
       - name: Install diff-cover
         run: |
           pip install --user diff-cover
@@ -65,11 +65,7 @@ jobs:
       # Compare coverage with the base branch, if decreases fails, if under 85 percent fails
       - name: Compare coverage
         run: |
-         git checkout main
-         python -m coverage run -p -m pytest src/jp2_remediator/tests/unit
-         python -m coverage xml -o coverage-base.xml
-         git checkout -
-         diff-cover --compare-branch=main coverage.xml --fail-under=85
+         diff-cover --compare-branch=origin/main coverage.xml --fail-under=85
 
       - name: Combine coverage percentage totals
         run: |
