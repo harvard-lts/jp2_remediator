@@ -85,7 +85,7 @@ math.
   `false` to also write a rotating file log), `LOG_FILE_BACKUP_COUNT` (default 30).
 - S3 subcommand uses standard AWS credentials (`AWS_ACCESS_KEY_ID`,
   `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) from the environment.
-- Publishing to PyPI: `UV_PUBLISH_TOKEN` in `.env`, then `uv build && uv publish`.
+- Publishing to PyPI: `UV_PUBLISH_USERNAME` and `UV_PUBLISH_PASSWORD` in `.env`, then `uv build && uv publish`.
 
 ## Docker
 
