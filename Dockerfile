@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-COPY pyproject.toml README.md /app/
+COPY pyproject.toml uv.lock README.md /app/
 
 # Install the necessary packages
 RUN pip install --upgrade pip uv && \
