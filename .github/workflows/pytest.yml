@@ -1,0 +1,87 @@
+name: Unit tests
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        python-version: [3.13]
+    runs-on:
+      group: huit-arc
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          
+      - name: Switch to Current Branch
+        run: git checkout ${{ env.BRANCH }}
+              
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Create virtual environment
+        run: uv venv
+
+      - name: Install dependencies (project + dev group)
+        run: uv pip install -r pyproject.toml --group dev --system
+
+      - name: Run flake8
+        run: | 
+          # stop the build if there are flake8 errors
+          flake8 ./src --count --show-source --statistics
+
+      - name: Run coverage
+        env:
+          PYTHONPATH: app
+        run: |
+          python -m coverage run -p -m pytest src/jp2_remediator/tests/unit
+          python -m coverage combine
+          python -m coverage report -m --skip-covered
+          python -m coverage json
+
+      - name: "Combine"
+        run: |
+          export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          echo "total=$TOTAL" >> $GITHUB_ENV
+          echo "### Total coverage: ${TOTAL}%" >> $GITHUB_STEP_SUMMARY
+
+      # Queries the shields.io API to create a static SVG to embed
+      - name: Make static badge SVG
+        run: |
+          # hue of 0 = red, 120 = green, this finds a midpoint based on coverage
+          # NOTE: Bash only does integer arithmetic, so need to truncate any float percentages
+          hue=$(( (120 * ${total%.*}) / 100 ))
+          # pull SVG from shields.io - unencoded format will be "Test Coverage-$total%-hsl($hue,100%,35%)"
+          curl -o coverage.svg "https://img.shields.io/badge/Test_Coverage-$total%25-hsl($hue,100%25,35%25)"
+
+      # Creates a Git orphan branch, commits only the SVG and force overwrites any existing branch
+      # Branch will be called "badges/test-coverage"
+      # The embeddable SVG will be at: https://{GITHUB_HOSTNAME}/{GITHUB_ORG}/{REPO_NAME}/raw/badges/test-coverage/coverage.svg
+      - name: Commit coverage
+        run: |
+          git config --local user.email "${{ vars.ORG_EMAIL }}"
+          git config --local user.name "LTS GitHub Actions"
+          git checkout --orphan badges/test-coverage
+          # remove all files except the coverage badge from Git staging
+          git rm --cached -rf .
+
+          echo "## Coverage Report" >> README.md
+          echo >> README.md
+          python -m coverage report -m --skip-covered --format=markdown >> README.md
+
+          # Re-add and just commit the coverage badge and a new README
+          echo '# Test Coverage Badge Assets' > README.md
+          echo 'This branch is used to store the test coverage badge for the repository.' >> README.md
+          echo "The commit this badge references is: $GITHUB_SHA" >> README.md
+          git add coverage.svg README.md
+
+          git commit -m "Add coverage badge for commit: $GITHUB_SHA"
+          git push --force origin badges/test-coverage

@@ -1,79 +1,53 @@
 import unittest
 import os
-from unittest.mock import patch, mock_open, MagicMock
-from jp2_remediator.box_reader import BoxReader
+from unittest.mock import patch, MagicMock
+from jp2_remediator.in_memory_box_reader import InMemoryBoxReader
 from jpylyzer import boxvalidator
 from project_paths import paths
-import datetime
 
 # Define the path to the test data file
 TEST_DATA_PATH = os.path.join(paths.dir_unit_resources, "sample.jp2")
 
 
-class TestJP2ProcessingWithFile(unittest.TestCase):
+class TestInMemoryBoxReader(unittest.TestCase):
 
     def setUp(self):
-        # Set up a BoxReader instance for each test.
-        self.reader = BoxReader(TEST_DATA_PATH)
+        # Read the sample file into memory
+        with open(TEST_DATA_PATH, "rb") as f:
+            self.test_image_bytes = f.read()
+
+        # Set up an InMemoryBoxReader instance for each test
+        self.reader = InMemoryBoxReader(self.test_image_bytes)
         self.reader.logger = MagicMock()  # Mock logger directly
 
-    # Test for read_file method
-    def test_read_file_with_valid_path(self):
-        # Test reading a valid test file
-        result = self.reader.read_file(TEST_DATA_PATH)
-        self.assertIsNotNone(result)  # Ensure file content is not None
-        self.assertIsInstance(result, bytes)  # Ensure file content is in bytes
+    # Test for initialization with bytes
+    def test_initialization_with_bytes(self):
+        # Test that InMemoryBoxReader initializes correctly with bytes
+        reader = InMemoryBoxReader(b"test content")
+        self.assertEqual(reader.file_path, "::memory::")
+        self.assertIsInstance(reader.file_contents, bytes)
+        self.assertEqual(reader.file_contents, b"test content")
 
     # Test for initialize_validator method
     def test_initialize_validator_with_file_content(self):
-        # Read file content
-        file_contents = self.reader.read_file(TEST_DATA_PATH)
-        if file_contents is None:
-            self.fail("Test file could not be read.")
-
         # Initialize validator and check the type
-        self.reader.file_contents = file_contents
         validator = self.reader.initialize_validator()
         self.assertIsInstance(validator, boxvalidator.BoxValidator)
 
     # Test for find_box_position method
     def test_find_box_position_in_file(self):
-        # Read file content
-        file_contents = self.reader.read_file(TEST_DATA_PATH)
-        if file_contents is None:
-            self.fail("Test file could not be read.")
-
-        # Set the file contents for the reader instance
-        self.reader.file_contents = file_contents
-
         # Find a known box position in the sample file
         position = self.reader.find_box_position(b"\x6a\x70\x32\x68")
         self.assertNotEqual(position, -1)  # Ensure that the box is found
 
     # Test for check_boxes method
     def test_check_boxes_in_file(self):
-        # Read file content
-        file_contents = self.reader.read_file(TEST_DATA_PATH)
-        if file_contents is None:
-            self.fail("Test file could not be read.")
-
-        # Set the file contents for the reader instance
-        self.reader.file_contents = file_contents
-
         # Call check_boxes
         header_offset_position = self.reader.check_boxes()
         self.assertIsNotNone(header_offset_position)
 
     # Test for process_colr_box method
     def test_process_colr_box_in_file(self):
-        # Read file content
-        file_contents = self.reader.read_file(TEST_DATA_PATH)
-        if file_contents is None:
-            self.fail("Test file could not be read.")
-
-        # Set the file contents for the reader instance
-        self.reader.file_contents = file_contents
-
         # Find the colr box position
         colr_position = self.reader.find_box_position(b"\x63\x6f\x6c\x72")
         if colr_position == -1:
@@ -83,45 +57,16 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
         header_offset_position = self.reader.process_colr_box(colr_position)
         self.assertIsNotNone(header_offset_position)
 
-    # Test for write_modified_file method
-    @patch(
-        "builtins.open", new_callable=mock_open, read_data=b"sample content"
-    )
-    def test_write_modified_file_with_changes(self, mock_file):
-        # Read file content (from mock)
-        file_contents = self.reader.read_file(TEST_DATA_PATH)
-        if file_contents is None:
-            self.fail("Test file could not be read.")
+    # Test for remediate_jp2 method returns tuple
+    def test_remediate_jp2_returns_tuple(self):
+        # Call remediate_jp2 and verify it returns a tuple
+        result = self.reader.remediate_jp2()
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 2)
 
-        # Modify the file contents slightly using bytes
-        new_file_contents = file_contents + b" modified"
-        # Append in bytes, not string
-
-        # Test writing the modified file
-        self.reader.write_modified_file(new_file_contents)
-        timestamp = datetime.datetime.now().strftime(
-            "%Y%m%d"
-        )  # use "%Y%m%d_%H%M%S" for more precision
-        expected_filename = TEST_DATA_PATH.replace(
-            ".jp2", f"_modified_{timestamp}.jp2"
-        )
-
-        # Ensure the file was written to the correct file path
-        mock_file.assert_any_call(expected_filename, "wb")
-
-        # Ensure the contents were written correctly
-        mock_file().write.assert_called_once_with(b"sample content modified")
-
-    # Test for read_file method with IOError
-    @patch("builtins.open", new_callable=mock_open)
-    def test_read_file_with_io_error(self, mock_open_func):
-        # Mock open and read a file and get an error
-        mock_open_func.side_effect = IOError("Unable to read file")
-        result = self.reader.read_file("nonexistent.jp2")
-        self.assertIsNone(result)
-        self.reader.logger.error.assert_called_once_with(
-            "Error reading file nonexistent.jp2: Unable to read file"
-        )
+        jp2_result, remediated_bytes = result
+        self.assertIsNotNone(jp2_result)
+        self.assertIsInstance(remediated_bytes, (bytes, bytearray))
 
     # Test for process_all_trc_tags method
     def test_process_all_trc_tags(self):
@@ -141,7 +86,7 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
     # Test for check_boxes method logging when 'jp2h' not found
     def test_jp2h_not_found_logging(self):
         # Set up file_contents to simulate a missing 'jp2h' box
-        self.reader.file_contents = b"\x00" * 100
+        self.reader.file_contents = bytearray(b"\x00" * 100)
         # Arbitrary content without 'jp2h'
         # Call the method that should log the debug message
         self.reader.check_boxes()
@@ -150,26 +95,15 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             "'jp2h' not found in the file."
         )
 
-    # Test for write_modified_file method when no changes
-    @patch("builtins.open", new_callable=mock_open)
-    def test_write_modified_file_no_changes(self, mock_file):
-        # Set the file contents to simulate a situation with no modifications
-        original_content = b"original content"
-        self.reader.file_contents = original_content
+    # Test for remediate_jp2 method when content is empty
+    def test_remediate_jp2_empty_content(self):
+        # Create reader with empty bytes
+        reader = InMemoryBoxReader(b"")
+        result, remediated_bytes = reader.remediate_jp2()
 
-        # Call write_modified_file with identical content
-        self.reader.write_modified_file(original_content)
-
-        # Ensure that no file was written because there were no modifications
-        mock_file.assert_not_called()
-
-        # Check that the specific debug message was logged
-        self.reader.logger.info.assert_called_once()
-        pattern = (
-            r"No modifications needed\. No new file created: .*sample\.jp2"
-        )
-        call_args = self.reader.logger.info.call_args
-        self.assertRegex(call_args[0][0], pattern)
+        # Should return empty result and empty bytes
+        self.assertEqual(result.path, "::memory::")
+        self.assertEqual(remediated_bytes, b"")
 
     # Test for process_colr_box method when meth_value == 1
     def test_process_colr_box_meth_value_1(self):
@@ -177,12 +111,10 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
         # 'colr' box and meth_value = 1
         # Ensure 'colr' starts at 100, followed by 4 bytes,
         # and then meth_value at 1
-        self.reader.file_contents = (
+        self.reader.file_contents = bytearray(
             b"\x00" * 100  # Padding before 'colr' box
             + b"\x63\x6f\x6c\x72"  # 'colr' box
-            +
-            # b"\x00\x00\x00\x00" +  # Four placeholder bytes - kim why issue
-            b"\x01"  # meth_value set to 1
+            + b"\x01"  # meth_value set to 1
         )
         colr_position = 100
         header_offset_position = self.reader.process_colr_box(colr_position)
@@ -196,15 +128,12 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
 
     # Test for process_colr_box method with unrecognized meth_value
     def test_process_colr_box_unrecognized_meth_value(self):
-        self.reader.file_contents = (
+        self.reader.file_contents = bytearray(
             b"\x00" * 100  # Padding before 'colr' box
             + b"\x63\x6f\x6c\x72"  # 'colr' box
-            +
-            # b"\x00\x00\x00\x00" +  # Four placeholder bytes - kim why issue
-            b"\x03"  # meth_value set to 3
+            + b"\x03"  # meth_value set to 3
         )
         colr_position = 100
-        # print("File Contents:", self.reader.file_contents)  # Debug print
         header_offset_position = self.reader.process_colr_box(colr_position)
         self.assertIsNone(header_offset_position)
         self.reader.logger.debug.assert_any_call(
@@ -213,7 +142,7 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
 
     # Test for process_colr_box method when 'colr' box is missing
     def test_process_colr_box_missing(self):
-        self.reader.file_contents = b"\x00" * 100
+        self.reader.file_contents = bytearray(b"\x00" * 100)
         colr_position = -1
         header_offset_position = self.reader.process_colr_box(colr_position)
         self.assertIsNone(header_offset_position)
@@ -224,7 +153,7 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
     # Test for process_trc_tag method with incomplete trc_tag_entry
     def test_process_trc_tag_incomplete_entry(self):
         # Prepare the test data
-        self.reader.file_contents = (
+        self.reader.file_contents = bytearray(
             b"\x00" * 100 + b"\x72\x54\x52\x43" + b"\x00" * 6
         )
         trc_hex = b"\x72\x54\x52\x43"  # Hex for 'rTRC'
@@ -290,10 +219,10 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             f"due to an unrecognized 'meth' value."
         )
 
-    # Test for read_jp2_file method when file_contents is valid
-    def test_read_jp2_file(self):
+    # Test for remediate_jp2 method when file_contents is valid
+    def test_remediate_jp2_with_valid_content(self):
         # Prepare the test data with valid file contents
-        self.reader.file_contents = b"Valid JP2 content"
+        self.reader.file_contents = bytearray(b"Valid JP2 content")
 
         # Mock dependent methods and attributes
         with (
@@ -305,12 +234,6 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             patch.object(
                 self.reader, "process_all_trc_tags"
             ) as mock_process_all_trc_tags,
-            patch.object(
-                self.reader, "_skip_remediation"
-            ) as mock_skip_remediation,
-            patch.object(
-                self.reader, "write_modified_file"
-            ) as mock_write_modified_file,
         ):
 
             # Set up the mock for validator._isValid()
@@ -320,11 +243,12 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             mock_check_boxes.return_value = (
                 100  # Example header_offset_position
             )
-            mock_process_all_trc_tags.return_value = b"Modified JP2 content"
-            mock_skip_remediation.return_value = False
+            mock_process_all_trc_tags.return_value = bytearray(
+                b"Modified JP2 content"
+            )
 
             # Call the method under test
-            self.reader.read_jp2_file()
+            result, remediated_bytes = self.reader.remediate_jp2()
 
             # Assert that initialize_validator was called once
             mock_initialize_validator.assert_called_once()
@@ -335,47 +259,14 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             # Assert that check_boxes was called once
             mock_check_boxes.assert_called_once()
 
-            # Assert that _skip_remediation was called once
-            mock_skip_remediation.assert_called_once()
-
             # Assert that process_all_trc_tags was called with
             # the correct header_offset_position
             mock_process_all_trc_tags.assert_called_once_with(100)
 
-            # Assert that write_modified_file was called with
-            # the modified contents
-            mock_write_modified_file.assert_called_once_with(
-                b"Modified JP2 content"
+            # Assert that remediated_bytes contains the modified content
+            self.assertEqual(
+                remediated_bytes, bytearray(b"Modified JP2 content")
             )
-
-    # Test for read_jp2_file method when file_contents is None or empty
-    def test_read_jp2_file_no_file_contents(self):
-        # Set file_contents to None to simulate missing content
-        self.reader.file_contents = None
-
-        # Mock dependent methods to ensure they are not called
-        with (
-            patch.object(
-                self.reader, "initialize_validator"
-            ) as mock_initialize_validator,
-            patch.object(self.reader, "check_boxes") as mock_check_boxes,
-            patch.object(
-                self.reader, "process_all_trc_tags"
-            ) as mock_process_all_trc_tags,
-            patch.object(
-                self.reader, "write_modified_file"
-            ) as mock_write_modified_file,
-        ):
-
-            # Call the method under test
-            self.reader.read_jp2_file()
-
-            # Assert that the method returns early and dependent
-            # methods are not called
-            mock_initialize_validator.assert_not_called()
-            mock_check_boxes.assert_not_called()
-            mock_process_all_trc_tags.assert_not_called()
-            mock_write_modified_file.assert_not_called()
 
     # Test for process_trc_tag: when trc_tag_size != curv_trc_field_length
     def test_process_trc_tag_size_mismatch(self):
@@ -411,8 +302,8 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
 
         # Prepare curv_profile data with curv_trc_gamma_n
         # such that curv_trc_field_length != trc_tag_size
-        curv_trc_gamma_n = 1  # Set gamma_n to 2
-        curv_trc_field_length = curv_trc_gamma_n * 2 + 12  # Calculates to 16
+        curv_trc_gamma_n = 1  # Set gamma_n to 1
+        curv_trc_field_length = curv_trc_gamma_n * 2 + 12  # Calculates to 14
 
         # Build curv_profile (12 bytes): signature + reserved + gamma_n
         curv_signature = b"curv"  # Signature 'curv'
@@ -503,19 +394,43 @@ class TestJP2ProcessingWithFile(unittest.TestCase):
             "Expected skip_remediation to be True when gamma_n != 1.",
         )
 
-    def test_read_jp2_file_skip_remediation(self):
+    def test_remediate_jp2_skip_remediation(self):
         """
-        Ensure coverage for lines that handle skip_remediation
-        in read_jp2_file().
+        Ensure that remediate_jp2 properly handles skip_remediation.
         """
         self.reader.file_contents = b"SomeJP2Content"
         self.reader.curv_trc_gamma_n = 2  # Force skipping
 
-        with patch.object(self.reader, "write_modified_file") as mock_write:
-            self.reader.read_jp2_file()
-            # Because skip_remediation is True, we do not call
-            # write_modified_file
-            mock_write.assert_not_called()
+        result, remediated_bytes = self.reader.remediate_jp2()
+
+        # Verify result has skip_remediation set
+        self.assertTrue(result.is_skip_remediation())
+
+    # Test to ensure InMemoryBoxReader never calls write_modified_file
+    @patch("builtins.open")
+    def test_in_memory_never_writes_to_disk(self, mock_open):
+        """
+        Comprehensive test to ensure InMemoryBoxReader never writes to disk
+        during any operation.
+        """
+        # Call remediate_jp2 multiple times
+        for _ in range(3):
+            result, remediated_bytes = self.reader.remediate_jp2()
+
+        # Verify open was never called with 'wb' or 'w' mode
+        for call in mock_open.call_args_list:
+            if len(call[0]) > 1:
+                mode = call[0][1]
+                self.assertNotIn(
+                    "w", mode, "InMemoryBoxReader should never write to disk"
+                )
+
+    # Test that file_path is set to ::memory::
+    def test_file_path_is_memory(self):
+        """
+        Ensure that InMemoryBoxReader always has file_path set to ::memory::
+        """
+        self.assertEqual(self.reader.file_path, "::memory::")
 
 
 if __name__ == "__main__":

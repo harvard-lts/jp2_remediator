@@ -41,20 +41,31 @@ def main():
         "s3-file", help="Process a single JP2 file in S3"
     )
     s3_file_parser.add_argument(
-        "--input-bucket", help="Name of the AWS S3 bucket containing the JP2 file", required=True
+        "--input-bucket",
+        help="Name of the AWS S3 bucket containing the JP2 file",
+        required=True,
     )
     s3_file_parser.add_argument(
-        "--input-key", help="Key (path) of the JP2 file in the S3 bucket", required=True
+        "--input-key",
+        help="Key (path) of the JP2 file in the S3 bucket",
+        required=True,
     )
     s3_file_parser.add_argument(
-        "--output-bucket", help="Name of the AWS S3 bucket to upload the modified file (optional)", required=True
+        "--output-bucket",
+        help="Name of the AWS S3 bucket to upload the modified file (optional)",  # noqa E501
+        required=True,
     )
     s3_file_parser.add_argument(
-        "--output-key", help="Full key (path) for the uploaded file", required=True
+        "--output-key",
+        help="Full key (path) for the uploaded file",
+        required=True,
     )
     s3_file_parser.set_defaults(
         func=lambda args: processor.process_s3_file(
-            args.input_bucket, args.input_key, args.output_bucket, args.output_key
+            args.input_bucket,
+            args.input_key,
+            args.output_bucket,
+            args.output_key,
         )
     )
 
