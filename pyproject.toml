@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jp2_remediator"
-version = "1.0.0"
+version = "1.2.0"
 description = "A module to validate jp2images"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,6 +37,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/harvard-lts/jp2_remediator"
 Issues = "https://github.com/harvard-lts/jp2_remediator/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = [
