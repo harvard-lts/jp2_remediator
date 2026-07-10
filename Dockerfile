@@ -1,15 +1,10 @@
-FROM python:3.11-slim-buster
+FROM python:3.11-slim
 
-RUN DEBIAN_FRONTEND=noninteractive
-
-COPY requirements.txt /app/
+COPY pyproject.toml uv.lock README.md /app/
 
 # Install the necessary packages
-RUN apt-get update && \
-    apt-get install -y python-dev && \
-    pip install --upgrade pip && \
-    pip install -r /app/requirements.txt && \
-    rm -rf /var/lib/apt/lists/* && \
+RUN pip install --upgrade pip uv && \
+    uv pip install -r /app/pyproject.toml --system && \
     groupadd -g 55004 pyuser && \
     useradd -u 55005 -g 55004 -d /home/pyadm -m -s /sbin/nologin pyadm
 
@@ -21,7 +16,7 @@ WORKDIR /app
 
 USER pyadm
 
-ENV PYTHONPATH "${PYTHONPATH}:src"
+ENV PYTHONPATH="/app/src"
 
 # Run the Python script
 ENTRYPOINT ["/usr/local/bin/python3", "src/jp2_remediator/main.py"]

@@ -88,10 +88,35 @@ Run Docker container as executable
 
 ## Development environment
 ```bash
-python3 -m venv myenv
-source myenv/bin/activate
+uv sync
 export PYTHONPATH="${PYTHONPATH}:src"
-pip install -r requirements.txt
 
-python src/jp2_remediator/main.py -h
+uv run python src/jp2_remediator/main.py -h
+```
+
+## Publishing to PyPI
+
+Add the following variable to your `.env`:
+
+```
+UV_PUBLISH_TOKEN=pypi-<token>
+```
+
+Set the version number in `pyproject.toml` to the version you wish to publish.
+
+Run the following commands:
+
+```
+rm -rf dist/
+uv build
+uv publish
+```
+
+If you get a publish error, the following commands will set your `.env` variables into the shell and should work:
+
+```
+set -a
+source .env
+set +a
+uv publish
 ```
